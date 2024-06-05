@@ -1,11 +1,12 @@
-from fake_useragent import UserAgent
-import requests
-import re
-import random
 import json
+import random
+import re
+
+import requests
+from fake_useragent import UserAgent
 
 
-class SeatReservationSystem:
+class ReservationSystem:
     def __init__(self, student_id, passwd):
         # 传入参数
         self.student_id = student_id
@@ -31,8 +32,15 @@ class SeatReservationSystem:
         self.all_book = [{}]
         # all_book = [{"book_id": "", "room": "", "name": "", "date": "", "start": "", "end": "", "state": ""}}
 
+    # 登入预约系统-总方法
+    def login(self):
+        self.__get_session()
+        self.__login_main_system()
+        self.__get_sub_system_code()
+        self.__login_sub_book_system()
+
     # 请求登入页面得到session, __VIEWSTATE, 子系统code
-    def get_session(self):
+    def __get_session(self):
         host = "aryun.ustcori.com:4540"
         url = f"http://{host}/Page/BI/BI000.aspx"
         # 修改请求头
@@ -65,7 +73,7 @@ class SeatReservationSystem:
             Exception("获取__VIEWSTATE失败")
 
     # 登入主系统
-    def login_main_system(self):
+    def __login_main_system(self):
         host = "aryun.ustcori.com:4540"
         url = f"http://{host}/Page/BI/BI000.aspx"
         # 将session存入header
@@ -102,7 +110,7 @@ class SeatReservationSystem:
             Exception("主系统登入失败")
 
     # 获取子系统code
-    def get_sub_system_code(self):
+    def __get_sub_system_code(self):
         host = "aryun.ustcori.com:4540"
         url = f"http://{host}/Page/BI/BI0000.aspx"
         # 修改请求头
@@ -127,7 +135,7 @@ class SeatReservationSystem:
             Exception("获取子系统code失败")
 
     # 登入实验室预约子系统
-    def login_sub_book_system(self):
+    def __login_sub_book_system(self):
         host = "aryun.ustcori.com:4545"
         url = f"http://{host}/LMWeb/LM00/index.ashx?Method=Login&t={random.random()}"
         # 修改请求头
@@ -148,10 +156,6 @@ class SeatReservationSystem:
         # 检测是否登入成功
         if json.loads(response.text)["Flag"][0]["Status"] != "1":
             Exception("实验室预约子系统登入失败")
-
-    # 传入实验室及其座位序列号
-    def set_room_and_seats_id(self, room_and_seats_id):
-        self.room_and_seats_id = room_and_seats_id
 
     # 获取实验室及其座位序列号
     def get_room_and_seats_id(self):
@@ -209,19 +213,17 @@ class SeatReservationSystem:
         # 获取当前座位预约情况
         booked_time = {}
         for state in json.loads(response.text)["events"]:
-            data = re.search(r"\d+-\d\d-\d\d", state[2]).group()
-            start_time = re.search(r"\d+-\d\d-\d\d \d\d:\d\d", state[2]).group()
-            end_time = re.search(r"\d+-\d\d-\d\d \d\d:\d\d", state[3]).group()
+            data = re.search(r"\d\d\d\d-\d\d-\d\d", state[2]).group()
+            start_time = re.search(
+                r"(?<=\d\d\d\d-\d\d-\d\d )\d\d:\d\d", state[2]
+            ).group()
+            end_time = re.search(r"(?<=\d\d\d\d-\d\d-\d\d )\d\d:\d\d", state[3]).group()
             if data not in booked_time:
                 booked_time[data] = [[start_time, end_time]]
             else:
                 booked_time[data].append([start_time, end_time])
 
         return booked_time
-
-    # 传入老师id
-    def set_teachers_id(self, teacher_id):
-        self.teachers_id = teacher_id
 
     # 获取老师id
     def get_teachers_id(self):
@@ -275,8 +277,17 @@ class SeatReservationSystem:
         if response.status_code != 200:
             Exception("获取位置当前时段是否可以预约失败")
         # 检测是否可以预约
-        if json.loads(response.text)["Flag"][0]["Status"] == "1":
+        status = json.loads(response.text)["Flag"][0]["Status"]
+        if status == "1":
             return True
+        elif status == "2":
+            return "The time is not allowed"
+        elif status == "3":
+            return "booked by others"
+        elif status == "4":
+            return "waiting"
+        elif status == "5":
+            return "Time conflict with yourself"
         else:
             return False
 
@@ -310,14 +321,15 @@ class SeatReservationSystem:
         if response.status_code != 200:
             Exception("预约座位请求失败")
         # 检测是否可以预约成功
-        if json.loads(response.text)["Flag"][0]["Status"] == "1":
+        status = json.loads(response.text)["Flag"][0]["Status"]
+        if status == "1":
             return True
+        elif status == "2":
+            return "waiting"
+        elif status == "3":
+            return "booked by others"
         else:
             return False
-
-    # 传入当前所有预约
-    def set_all_book(self, all_book):
-        self.all_book = all_book
 
     # 获取当前所有预约
     def get_all_book(self):
